@@ -18,8 +18,8 @@ SRC_URI="
 	arm64? ( ${BASE_URI}/${MY_PN}_${PV}_linux_arm64.tar.gz -> ${MY_PN}-${PV}-arm64.tar.gz )
 	ui? (
 		${BASE_URI}/${MY_PN}-ui-linux_${PV}_linux_amd64.tar.gz -> ${MY_PN}-ui-${PV}-amd64.tar.gz
-		https://raw.githubusercontent.com/netbirdio/netbird/v${PV}/client/ui/assets/netbird.png
-			-> ${MY_PN}-icon-${PV}.png
+		https://raw.githubusercontent.com/netbirdio/netbird/v${PV}/client/ui/build/appicon.png
+			-> ${MY_PN}-appicon-${PV}.png
 	)
 "
 
@@ -93,7 +93,7 @@ src_unpack() {
 	if use ui; then
 		mkdir -p "${WORKDIR}"/ui || die
 		tar -xzf "${DISTDIR}/${MY_PN}-ui-${PV}-amd64.tar.gz" -C "${WORKDIR}"/ui || die
-		cp "${DISTDIR}/${MY_PN}-icon-${PV}.png" "${WORKDIR}/${MY_PN}.png" || die
+		cp "${DISTDIR}/${MY_PN}-appicon-${PV}.png" "${WORKDIR}/${MY_PN}.png" || die
 	fi
 }
 
@@ -102,8 +102,14 @@ src_install() {
 
 	if use ui; then
 		dobin ui/"${MY_PN}"-ui
-		doicon -s 256 "${WORKDIR}/${MY_PN}.png"
-		domenu "${FILESDIR}"/netbird-ui.desktop
+
+		# Desktop entry and icon are upstream's own, taken verbatim from the
+		# netbird-ui .deb: /usr/share/applications/org.wails.netbird.desktop
+		# and /usr/share/pixmaps/netbird.png. The odd org.wails.* naming is
+		# the Wails application id, which upstream never rebranded -- but the
+		# icon itself is NetBird's logo, not a Wails placeholder.
+		doicon "${WORKDIR}/${MY_PN}.png"
+		domenu "${FILESDIR}"/org.wails.netbird.desktop
 	fi
 
 	newinitd "${FILESDIR}"/netbird.initd "${MY_PN}"
