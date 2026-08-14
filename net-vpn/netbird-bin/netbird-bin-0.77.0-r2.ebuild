@@ -138,18 +138,45 @@ pkg_postinst() {
 		xdg_desktop_database_update
 	fi
 
-	elog "Do NOT run 'netbird service install' -- this package already ships a"
-	elog "service file. Enable the daemon with:"
-	elog
-	elog "  systemctl enable --now netbird        # systemd"
-	elog "  rc-update add netbird default         # OpenRC"
-	elog
-	elog "Then register this peer:"
-	elog
-	elog "  netbird up"
-	elog
-	elog "Extra daemon flags go in /etc/conf.d/netbird (OpenRC) or a systemd"
-	elog "drop-in via 'systemctl edit netbird'."
+	# Only the full walkthrough on a first install; upgrades just get the
+	# short note, since the daemon is already set up.
+	if [[ -n ${REPLACING_VERSIONS} ]]; then
+		elog "Restart the daemon to run the new version:"
+		elog
+		elog "  systemctl restart netbird       # systemd"
+		elog "  rc-service netbird restart      # OpenRC"
+	else
+		elog "Do NOT run 'netbird service install' -- this package ships its own"
+		elog "service file, and that command would write a second, conflicting"
+		elog "unit into /etc/systemd/system which silently takes precedence."
+		elog
+		elog "1. Start the daemon at boot:"
+		elog
+		elog "     systemctl enable --now netbird       # systemd"
+		elog "     rc-update add netbird default        # OpenRC"
+		elog "     rc-service netbird start             # OpenRC, start now"
+		elog
+		elog "2. Register this peer. Interactive SSO opens a browser:"
+		elog
+		elog "     netbird up"
+		elog
+		elog "   Headless hosts use a setup key instead:"
+		elog
+		elog "     netbird up --setup-key <key>"
+		elog "     netbird up --setup-key-file /path/to/key"
+		elog
+		elog "   Self-hosted management server:"
+		elog
+		elog "     netbird up --management-url https://netbird.example.com:443"
+		elog
+		elog "3. Verify:"
+		elog
+		elog "     netbird status"
+		elog "     systemctl status netbird"
+		elog
+		elog "Extra daemon flags go in /etc/conf.d/netbird (OpenRC) or a systemd"
+		elog "drop-in via 'systemctl edit netbird'. Logs are in /var/log/netbird."
+	fi
 
 	if [[ -f ${EROOT}/etc/systemd/networkd.conf.d/99-netbird.conf ]]; then
 		elog
@@ -158,8 +185,42 @@ pkg_postinst() {
 		elog "It overrides the one this package ships and is never cleaned up"
 		elog "by netbird itself, so you may remove it:"
 		elog
-		elog "  rm /etc/systemd/networkd.conf.d/99-netbird.conf"
+		elog "  rm ${EROOT}/etc/systemd/networkd.conf.d/99-netbird.conf"
 	fi
+}
+
+pkg_prerm() {
+	# REPLACED_BY_VERSION is set only when this removal is part of an
+	# upgrade, so a routine `emerge -u` stays quiet.
+	[[ -n ${REPLACED_BY_VERSION} ]] && return
+
+	elog "Unmerging does not stop the running daemon or touch your peer"
+	elog "registration. To tear NetBird down completely:"
+	elog
+	elog "1. Stop and disable the service:"
+	elog
+	elog "     systemctl disable --now netbird      # systemd"
+	elog "     rc-update del netbird default        # OpenRC"
+	elog "     rc-service netbird stop              # OpenRC"
+	elog
+	elog "2. Optionally disconnect this peer from the mesh. This changes state"
+	elog "   on the management server, so it is deliberately not automated:"
+	elog
+	elog "     netbird down"
+	elog
+	elog "   Run it BEFORE unmerging -- the binary is gone afterwards."
+	elog
+	elog "3. Configuration and logs are left behind on purpose, so that"
+	elog "   reinstalling reconnects without running 'netbird up' again."
+	elog "   Remove them to drop the registration for good:"
+	elog
+	elog "     rm -rf ${EROOT}/var/lib/netbird ${EROOT}/var/log/netbird"
+	elog
+	elog "4. NetBird writes this file itself and never cleans it up:"
+	elog
+	elog "     rm -f ${EROOT}/etc/systemd/networkd.conf.d/99-netbird.conf"
+	elog
+	elog "     systemctl daemon-reload"
 }
 
 pkg_postrm() {
