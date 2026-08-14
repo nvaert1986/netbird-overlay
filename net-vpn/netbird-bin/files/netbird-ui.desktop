@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=NetBird
+GenericName=Overlay Network Client
+Comment=Connect to your NetBird overlay network
+Exec=netbird-ui
+Icon=netbird
+Terminal=false
+StartupNotify=true
+Categories=Network;
+Keywords=VPN;WireGuard;Overlay;Mesh;NetBird;

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE pkgmetadata SYSTEM "https://www.gentoo.org/dtd/metadata.dtd">
+<pkgmetadata>
+	<maintainer type="person">
+		<email>25772781+nvaert1986@users.noreply.github.com</email>
+	</maintainer>
+	<longdescription lang="en">
+		NetBird is a WireGuard-based overlay network that connects machines
+		into a single private mesh, with NAT traversal, SSO/MFA login and
+		centrally managed access control. This package installs the prebuilt
+		upstream release binaries: the netbird CLI/daemon and, with the "ui"
+		USE flag, the netbird-ui desktop tray application.
+
+		Everything is shipped prebuilt from upstream's release archives, so
+		nothing is compiled locally and no dependency tarball has to be
+		generated or hosted.
+
+		The desktop UI could not be built from source in any case: it is a
+		Wails 3 application whose build requires "wails3 generate bindings"
+		and a pnpm/Vite frontend step, both of which need network access
+		during compilation, which Portage forbids in src_compile.
+	</longdescription>
+	<use>
+		<flag name="ui">
+			Install the netbird-ui desktop tray application (GTK4 and
+			WebKitGTK 6). Upstream only publishes this for amd64.
+		</flag>
+	</use>
+	<upstream>
+		<bugs-to>https://github.com/netbirdio/netbird/issues</bugs-to>
+		<doc>https://docs.netbird.io/</doc>
+		<remote-id type="github">netbirdio/netbird</remote-id>
+	</upstream>
+</pkgmetadata>

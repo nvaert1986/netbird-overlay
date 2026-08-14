@@ -1,0 +1,20 @@
+#!/sbin/openrc-run
+# Copyright 2026 Gentoo Authors
+# Distributed under the terms of the GNU General Public License v2
+
+description="NetBird overlay network client"
+
+command="/usr/bin/netbird"
+command_args="service run ${NETBIRD_OPTS}"
+command_background="yes"
+pidfile="/run/${RC_SVCNAME}.pid"
+
+depend() {
+	need net
+	after nss-lookup
+}
+
+start_pre() {
+	checkpath -d -m 0700 -o root:root /var/lib/netbird
+	checkpath -d -m 0755 -o root:root /var/log/netbird
+}

@@ -1,0 +1,8 @@
+# Extra flags passed to `netbird service run`.
+#
+# Examples:
+#   NETBIRD_OPTS="--log-level debug"
+#   NETBIRD_OPTS="--management-url https://netbird.example.com:443"
+#   NETBIRD_OPTS="--config /var/lib/netbird/default.json"
+#
+NETBIRD_OPTS=""

@@ -1,0 +1,30 @@
+[Unit]
+Description=NetBird overlay network client
+Documentation=https://docs.netbird.io/
+After=network-online.target nss-lookup.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/netbird service run
+Restart=always
+RestartSec=5s
+
+# Runs as root deliberately. netbird creates the WireGuard interface, rewrites
+# routing tables, programs nftables/conntrack and manages DNS for the whole
+# host, so it needs CAP_NET_ADMIN and CAP_NET_RAW for its entire lifetime and
+# cannot drop privileges to a dedicated account. Upstream's own generated unit
+# does the same. Setting AmbientCapabilities= here would be a no-op, since a
+# root process without a CapabilityBoundingSet= already holds every capability.
+NoNewPrivileges=yes
+
+# Defaults used by `netbird service run`:
+#   --config    /var/lib/netbird/default.json
+#   --log-file  /var/log/netbird/client.log
+#   --daemon-addr unix:///var/run/netbird.sock
+StateDirectory=netbird
+StateDirectoryMode=0700
+LogsDirectory=netbird
+
+[Install]
+WantedBy=multi-user.target
