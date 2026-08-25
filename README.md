@@ -17,7 +17,7 @@ netbird-overlay/
 ├── metadata/layout.conf
 ├── profiles/{repo_name,categories}
 └── net-vpn/netbird-bin/
-    ├── netbird-bin-0.77.0.ebuild
+    ├── netbird-bin-0.77.1.ebuild
     ├── metadata.xml · Manifest
     └── files/
         ├── netbird.service           # systemd unit
@@ -133,7 +133,7 @@ keeps the overlay dependency-free.
 
 ```bash
 cd net-vpn/netbird-bin
-mv netbird-bin-0.77.0.ebuild netbird-bin-<new>.ebuild
+mv netbird-bin-0.77.1.ebuild netbird-bin-<new>.ebuild
 ebuild netbird-bin-<new>.ebuild manifest
 ```
 
