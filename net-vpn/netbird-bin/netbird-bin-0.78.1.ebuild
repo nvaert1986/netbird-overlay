@@ -49,15 +49,25 @@ RESTRICT="strip test"
 #   libsoup-3.0.so.0              -> net-libs/libsoup:3.0
 #   libX11.so.6                   -> x11-libs/libX11
 #
-# xdg-open is also invoked (via skratchdot/open-golang) to launch a browser
-# for interactive SSO login. Only pulled in with USE=ui so that headless
-# installs stay lean -- there, register with `netbird up --setup-key <key>`.
+# Two binaries are also shelled out to, so neither shows up above:
+#
+#   xdg-open  -- via skratchdot/open-golang, to launch a browser for
+#                interactive SSO login
+#   pkexec    -- since 0.78.0, to re-exec netbird-ui with
+#                --apply-privileged-settings for the NetBird SSH settings the
+#                daemon restricts to root (the policy file installed below
+#                names that action). The UI reports "polkit had no way to ask"
+#                and the setting silently stays put if pkexec is missing.
+#
+# Both are pulled in only with USE=ui so that headless installs stay lean --
+# there, register with `netbird up --setup-key <key>`.
 RDEPEND="
 	ui? (
 		dev-libs/glib:2
 		gui-libs/gtk:4
 		net-libs/libsoup:3.0
 		net-libs/webkit-gtk:6
+		sys-auth/polkit
 		x11-libs/cairo
 		x11-libs/libX11
 		x11-misc/xdg-utils
@@ -110,6 +120,15 @@ src_install() {
 		# icon itself is NetBird's logo, not a Wails placeholder.
 		doicon "${WORKDIR}/${MY_PN}.png"
 		domenu "${FILESDIR}"/org.wails.netbird.desktop
+
+		# New in 0.78.0 and also taken verbatim from the .deb. Without it
+		# pkexec still elevates, but prompts with a raw command line instead
+		# of the action's own wording. Kept whole rather than trimmed to the
+		# /usr/bin action we install: pkexec matches on exec.path, so the
+		# /usr/local/bin one is simply never selected here. polkitd picks new
+		# action files up on its own, so there is nothing to trigger.
+		insinto /usr/share/polkit-1/actions
+		doins "${FILESDIR}"/io.netbird.settings.policy
 	fi
 
 	newinitd "${FILESDIR}"/netbird.initd "${MY_PN}"

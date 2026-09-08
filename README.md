@@ -17,14 +17,16 @@ netbird-overlay/
 ├── metadata/layout.conf
 ├── profiles/{repo_name,categories}
 └── net-vpn/netbird-bin/
-    ├── netbird-bin-0.77.1.ebuild
+    ├── netbird-bin-0.78.1.ebuild
     ├── metadata.xml · Manifest
     └── files/
-        ├── netbird.service           # systemd unit
-        ├── netbird.initd             # OpenRC service
-        ├── netbird.confd             # OpenRC options
-        ├── netbird-ui.desktop        # desktop entry for the tray UI
-        └── install.conf              # blocks upstream's curl|sh self-updater
+        ├── netbird.service            # systemd unit
+        ├── netbird.initd              # OpenRC service
+        ├── netbird.confd              # OpenRC options
+        ├── org.wails.netbird.desktop  # desktop entry for the tray UI
+        ├── io.netbird.settings.policy # polkit action for the UI's pkexec prompt
+        ├── 99-netbird-networkd.conf   # stops networkd stripping NetBird's routes
+        └── install.conf               # blocks upstream's curl|sh self-updater
 ```
 
 `files/` is the PMS-defined `FILESDIR` — the standard per-package directory for
@@ -133,11 +135,14 @@ keeps the overlay dependency-free.
 
 ```bash
 cd net-vpn/netbird-bin
-mv netbird-bin-0.77.1.ebuild netbird-bin-<new>.ebuild
+mv netbird-bin-0.78.1.ebuild netbird-bin-<new>.ebuild
 ebuild netbird-bin-<new>.ebuild manifest
 ```
 
 Check whether upstream has started publishing an arm64 UI archive before
-relaxing `REQUIRED_USE`. Upstream also ships
+relaxing `REQUIRED_USE`. Diff `.goreleaser_ui.yaml` and
+`client/ui/build/linux/` against the previous tag too — that is where the
+vendored desktop entry and polkit action come from, and both have changed
+under a version bump before. Upstream also ships
 `netbird-ui-linux-gtk3_<ver>_linux_amd64.tar.gz`, a WebKit2GTK-4.1 build for
 systems without `webkit-gtk:6`, if a `gtk3` USE flag is ever wanted.
