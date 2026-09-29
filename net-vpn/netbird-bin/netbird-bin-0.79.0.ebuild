@@ -37,9 +37,14 @@ REQUIRED_USE="ui? ( amd64 )"
 # Prebuilt upstream binaries: never strip, and there is no test suite to run.
 RESTRICT="strip test"
 
-# The netbird CLI is a statically linked CGO_ENABLED=0 Go binary and needs
-# nothing at runtime. Every dependency below comes from netbird-ui, taken from
-# its direct DT_NEEDED entries rather than the full transitive ldd output.
+# The netbird CLI is a statically linked CGO_ENABLED=0 Go binary, so it links
+# against nothing. It does verify TLS to the management and signal servers
+# against the system trust store, and embeds no fallback root bundle (no
+# x509roots/fallback in `go version -m`), so ca-certificates is needed
+# regardless of USE. Upstream's rpm declares it too, since 0.79.0.
+#
+# Every other dependency below comes from netbird-ui, taken from its direct
+# DT_NEEDED entries rather than the full transitive ldd output.
 #
 #   libgtk-4.so.1                 -> gui-libs/gtk:4
 #   libgio/libgobject/libglib-2.0 -> dev-libs/glib:2
@@ -62,6 +67,7 @@ RESTRICT="strip test"
 # Both are pulled in only with USE=ui so that headless installs stay lean --
 # there, register with `netbird up --setup-key <key>`.
 RDEPEND="
+	app-misc/ca-certificates
 	ui? (
 		dev-libs/glib:2
 		gui-libs/gtk:4
