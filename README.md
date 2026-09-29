@@ -17,7 +17,7 @@ netbird-overlay/
 ├── metadata/layout.conf
 ├── profiles/{repo_name,categories}
 └── net-vpn/netbird-bin/
-    ├── netbird-bin-0.78.1.ebuild
+    ├── netbird-bin-0.79.0.ebuild
     ├── metadata.xml · Manifest
     └── files/
         ├── netbird.service            # systemd unit
@@ -80,6 +80,22 @@ netbird up
 
 Do **not** run `netbird service install` — the unit is shipped by the package.
 
+## Upgrading
+
+Portage does not restart the daemon, so do it yourself after the merge. On
+systemd, reload first: every merge rewrites `netbird.service`, and systemd
+otherwise warns that the unit changed on disk.
+
+```bash
+emaint sync -r netbird-overlay
+emerge -av net-vpn/netbird-bin
+
+systemctl daemon-reload && systemctl restart netbird    # systemd
+rc-service netbird restart                              # OpenRC
+```
+
+If you are connected over the NetBird mesh, the restart drops that session.
+
 ## USE flags
 
 | Flag | Default | Effect |
@@ -91,6 +107,10 @@ and the arm64 UI asset returns 404. The CLI itself is available for both
 amd64 and arm64.
 
 ## Runtime notes
+
+`app-misc/ca-certificates` is required regardless of USE: the CLI verifies TLS
+to the management and signal servers against the system trust store and embeds
+no fallback root bundle. Upstream's rpm declares the same dependency.
 
 The daemon runs as **root**. It cannot drop privileges: it needs `CAP_NET_ADMIN`
 and `CAP_NET_RAW` for its whole lifetime to manage the WireGuard interface,
@@ -135,7 +155,7 @@ keeps the overlay dependency-free.
 
 ```bash
 cd net-vpn/netbird-bin
-mv netbird-bin-0.78.1.ebuild netbird-bin-<new>.ebuild
+git mv netbird-bin-<old>.ebuild netbird-bin-<new>.ebuild
 ebuild netbird-bin-<new>.ebuild manifest
 ```
 
@@ -146,3 +166,10 @@ vendored desktop entry and polkit action come from, and both have changed
 under a version bump before. Upstream also ships
 `netbird-ui-linux-gtk3_<ver>_linux_amd64.tar.gz`, a WebKit2GTK-4.1 build for
 systems without `webkit-gtk:6`, if a `gtk3` USE flag is ever wanted.
+
+Re-check the runtime dependencies as well: compare `readelf -d netbird-ui`
+`NEEDED` entries against the previous release, and look at the `dependencies:`
+lists in `.goreleaser.yaml`'s nfpms section, which is how the `ca-certificates`
+dependency surfaced in 0.79.0. Verify the downloaded archives against upstream's
+`netbird_<ver>_checksums.txt` and `netbird-ui_<ver>_checksums.txt` before
+committing the Manifest.
