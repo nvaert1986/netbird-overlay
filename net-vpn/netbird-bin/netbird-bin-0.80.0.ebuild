@@ -169,13 +169,27 @@ pkg_postinst() {
 		xdg_desktop_database_update
 	fi
 
+	# Every merge rewrites netbird.service with a fresh mtime, even when its
+	# content is unchanged, so systemd flags the unit NeedDaemonReload after
+	# each upgrade. Reloading only rereads unit files and leaves the running
+	# daemon alone. Guarded the way sys-apps/systemd guards daemon-reexec:
+	# only on the live system, never into ROOT or a chroot without systemd.
+	if [[ -z ${ROOT} && -d /run/systemd/system ]]; then
+		ebegin "Reloading systemd unit files"
+		systemctl daemon-reload
+		eend $?
+	fi
+
 	# Only the full walkthrough on a first install; upgrades just get the
-	# short note, since the daemon is already set up.
+	# short note, since the daemon is already set up. The restart stays
+	# manual on purpose: it drops any session that runs over the NetBird
+	# mesh, including one to netbird's own SSH server. The reload is repeated
+	# in the note for ROOT and chroot merges, which skip the one above.
 	if [[ -n ${REPLACING_VERSIONS} ]]; then
 		elog "Restart the daemon to run the new version:"
 		elog
-		elog "  systemctl restart netbird       # systemd"
-		elog "  rc-service netbird restart      # OpenRC"
+		elog "  systemctl daemon-reload && systemctl restart netbird   # systemd"
+		elog "  rc-service netbird restart                             # OpenRC"
 	else
 		elog "Do NOT run 'netbird service install' -- this package ships its own"
 		elog "service file, and that command would write a second, conflicting"

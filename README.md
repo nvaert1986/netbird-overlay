@@ -17,7 +17,7 @@ netbird-overlay/
 ├── metadata/layout.conf
 ├── profiles/{repo_name,categories}
 └── net-vpn/netbird-bin/
-    ├── netbird-bin-0.79.0.ebuild
+    ├── netbird-bin-0.80.0.ebuild
     ├── metadata.xml · Manifest
     └── files/
         ├── netbird.service            # systemd unit
@@ -82,9 +82,11 @@ Do **not** run `netbird service install` — the unit is shipped by the package.
 
 ## Upgrading
 
-Portage does not restart the daemon, so do it yourself after the merge. On
-systemd, reload first: every merge rewrites `netbird.service`, and systemd
-otherwise warns that the unit changed on disk.
+Portage does not restart the daemon, so do it yourself after the merge. Every
+merge rewrites `netbird.service`, so `pkg_postinst` runs `systemctl
+daemon-reload` for you when merging into the live system. It skips that
+when merging with `ROOT` set or into a chroot without a running systemd, so
+the systemd line below still reloads; a second reload is harmless.
 
 ```bash
 emaint sync -r netbird-overlay
@@ -94,7 +96,8 @@ systemctl daemon-reload && systemctl restart netbird    # systemd
 rc-service netbird restart                              # OpenRC
 ```
 
-If you are connected over the NetBird mesh, the restart drops that session.
+The restart is left to you on purpose: if you are connected over the NetBird
+mesh, it drops that session.
 
 ## USE flags
 
@@ -170,6 +173,8 @@ systems without `webkit-gtk:6`, if a `gtk3` USE flag is ever wanted.
 Re-check the runtime dependencies as well: compare `readelf -d netbird-ui`
 `NEEDED` entries against the previous release, and look at the `dependencies:`
 lists in `.goreleaser.yaml`'s nfpms section, which is how the `ca-certificates`
-dependency surfaced in 0.79.0. Verify the downloaded archives against upstream's
-`netbird_<ver>_checksums.txt` and `netbird-ui_<ver>_checksums.txt` before
-committing the Manifest.
+dependency surfaced. The rpm entries there also list `contents:` such as
+`/etc/sysconfig/netbird`; those are RPM conventions that nothing in this
+package's units reads, so they need no counterpart here. Verify the
+downloaded archives against upstream's `netbird_<ver>_checksums.txt` and
+`netbird-ui_<ver>_checksums.txt` before committing the Manifest.
