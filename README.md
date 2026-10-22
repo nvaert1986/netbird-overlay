@@ -17,7 +17,7 @@ netbird-overlay/
 ├── metadata/layout.conf
 ├── profiles/{repo_name,categories}
 └── net-vpn/netbird-bin/
-    ├── netbird-bin-0.80.0.ebuild
+    ├── netbird-bin-0.81.3.ebuild
     ├── metadata.xml · Manifest
     └── files/
         ├── netbird.service            # systemd unit
@@ -132,6 +132,13 @@ SSO. Headless installs can skip the UI and register with a setup key instead:
 netbird up --setup-key <key>          # or --setup-key-file <path>
 ```
 
+The certificate posture check (new in 0.81.0) reads its machine store from the
+daemon's environment. This package uses upstream's tarball, whose CLI is built
+without the `pkcs11` tag (upstream only adds it to the deb/rpm build), so
+`NB_CERT_PKCS11_URI` has no effect here. `NB_CERT_STORE_DIR`, a directory of
+PEM and TSS2 key files, does work. Set it with `systemctl edit netbird`
+(`Environment=`), or with an `export` line in `/etc/conf.d/netbird` on OpenRC.
+
 ## Why there is no source-built package
 
 The desktop UI cannot be built from source at all. `netbird-ui` is a
@@ -178,3 +185,9 @@ dependency surfaced. The rpm entries there also list `contents:` such as
 package's units reads, so they need no counterpart here. Verify the
 downloaded archives against upstream's `netbird_<ver>_checksums.txt` and
 `netbird-ui_<ver>_checksums.txt` before committing the Manifest.
+
+Since 0.81.0 the deb/rpm CLI is a different build (`netbird-pkcs11`) from
+the tarball one this package uses. Check that the `archives:` section of
+`.goreleaser.yaml` still packs the `netbird`/`netbird-static` builds, and that
+`go version -m netbird` still shows `CGO_ENABLED=0`. If the tarball ever picks
+up the `pkcs11` tag, the CLI links libc and the Runtime notes above change.
