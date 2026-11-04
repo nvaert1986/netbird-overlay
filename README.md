@@ -17,7 +17,7 @@ netbird-overlay/
 ├── metadata/layout.conf
 ├── profiles/{repo_name,categories}
 └── net-vpn/netbird-bin/
-    ├── netbird-bin-0.81.3.ebuild
+    ├── netbird-bin-0.82.0.ebuild
     ├── metadata.xml · Manifest
     └── files/
         ├── netbird.service            # systemd unit
