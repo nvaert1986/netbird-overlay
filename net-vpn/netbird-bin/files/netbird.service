@@ -1,8 +1,14 @@
 [Unit]
 Description=NetBird overlay network client
 Documentation=https://docs.netbird.io/
-After=network-online.target nss-lookup.target
-Wants=network-online.target
+# Deliberately not network-online.target, matching upstream's own generated
+# unit (After=network.target). The daemon retries its management connection on
+# its own, so it gains nothing from waiting. And on a laptop whose WiFi only
+# comes up after login, network-online.target is reached only when a
+# wait-online service gives up: two minutes with systemd-networkd-wait-online
+# enabled but managing no links. Until then there is no control socket, so the
+# tray reports the daemon as down.
+After=network.target nss-lookup.target
 
 [Service]
 Type=simple

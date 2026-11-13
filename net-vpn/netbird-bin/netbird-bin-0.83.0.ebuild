@@ -1,0 +1,303 @@
+# Copyright 2026 Gentoo Authors
+# Distributed under the terms of the GNU General Public License v2
+
+EAPI=8
+
+inherit desktop linux-info systemd xdg-utils
+
+MY_PN="${PN%-bin}"
+BASE_URI="https://github.com/netbirdio/netbird/releases/download/v${PV}"
+
+DESCRIPTION="WireGuard-based overlay network with SSO/MFA and centralised access control"
+HOMEPAGE="https://netbird.io/ https://github.com/netbirdio/netbird"
+
+# Upstream ships the CLI for amd64/arm64, but the Wails 3 desktop UI is built
+# for linux/amd64 only (see .goreleaser_ui.yaml) -- there is no arm64 UI asset.
+SRC_URI="
+	amd64? ( ${BASE_URI}/${MY_PN}_${PV}_linux_amd64.tar.gz -> ${MY_PN}-${PV}-amd64.tar.gz )
+	arm64? ( ${BASE_URI}/${MY_PN}_${PV}_linux_arm64.tar.gz -> ${MY_PN}-${PV}-arm64.tar.gz )
+	ui? (
+		${BASE_URI}/${MY_PN}-ui-linux_${PV}_linux_amd64.tar.gz -> ${MY_PN}-ui-${PV}-amd64.tar.gz
+		https://raw.githubusercontent.com/netbirdio/netbird/v${PV}/client/ui/build/appicon.png
+			-> ${MY_PN}-appicon-${PV}.png
+	)
+"
+
+S="${WORKDIR}"
+
+# The repo is BSD-3-Clause except management/, signal/, relay/ and combined/,
+# which are AGPL-3. Those are server components and are not shipped here --
+# these archives contain only the client and the desktop UI.
+LICENSE="BSD"
+SLOT="0"
+KEYWORDS="-* ~amd64 ~arm64"
+IUSE="+ui"
+REQUIRED_USE="ui? ( amd64 )"
+
+# Prebuilt upstream binaries: never strip, and there is no test suite to run.
+RESTRICT="strip test"
+
+# The netbird CLI is a statically linked CGO_ENABLED=0 Go binary, so it links
+# against nothing. It does verify TLS to the management and signal servers
+# against the system trust store, and embeds no fallback root bundle (no
+# x509roots/fallback in `go version -m`), so ca-certificates is needed
+# regardless of USE. Upstream's rpm declares it too, since 0.79.0.
+#
+# Every other dependency below comes from netbird-ui, taken from its direct
+# DT_NEEDED entries rather than the full transitive ldd output.
+#
+#   libgtk-4.so.1                 -> gui-libs/gtk:4
+#   libgio/libgobject/libglib-2.0 -> dev-libs/glib:2
+#   libcairo.so.2                 -> x11-libs/cairo
+#   libwebkitgtk-6.0.so.4         -> net-libs/webkit-gtk:6
+#   libjavascriptcoregtk-6.0.so.1 -> net-libs/webkit-gtk:6
+#   libsoup-3.0.so.0              -> net-libs/libsoup:3.0
+#   libX11.so.6                   -> x11-libs/libX11
+#
+# Two binaries are also shelled out to, so neither shows up above:
+#
+#   xdg-open  -- via skratchdot/open-golang, to launch a browser for
+#                interactive SSO login
+#   pkexec    -- since 0.78.0, to re-exec netbird-ui with
+#                --apply-privileged-settings for the NetBird SSH settings the
+#                daemon restricts to root (the policy file installed below
+#                names that action). The UI reports "polkit had no way to ask"
+#                and the setting silently stays put if pkexec is missing.
+#
+# Both are pulled in only with USE=ui so that headless installs stay lean --
+# there, register with `netbird up --setup-key <key>`.
+#
+# The daemon also runs getent and `id -G` (client/internal/getent) to look up
+# accounts and groups, since 0.83.0 for --allow-group too. Both are @system
+# (glibc, coreutils). Since 0.83.0 it asks logind over the system bus (godbus,
+# linked in statically) who holds the active local session, to hand the default
+# profile to that user. Without systemd-logind or elogind, root has to claim it.
+RDEPEND="
+	app-misc/ca-certificates
+	ui? (
+		dev-libs/glib:2
+		gui-libs/gtk:4
+		net-libs/libsoup:3.0
+		net-libs/webkit-gtk:6
+		sys-auth/polkit
+		x11-libs/cairo
+		x11-libs/libX11
+		x11-misc/xdg-utils
+	)
+"
+
+# netbird programs nftables through netlink directly (google/nftables), so no
+# userspace firewall binary is required. It only shells out to iptables on the
+# legacy fallback path; pull in net-firewall/iptables yourself if you need it.
+
+QA_PREBUILT="usr/bin/${MY_PN} usr/bin/${MY_PN}-ui"
+
+CONFIG_CHECK="~TUN"
+ERROR_TUN="CONFIG_TUN is required for netbird to create its WireGuard interface."
+
+pkg_setup() {
+	linux-info_pkg_setup
+}
+
+src_unpack() {
+	# Both archives extract flat and both contain LICENSE/README.md, so they
+	# would clobber each other in a shared WORKDIR. Unpack them separately.
+	local cli_archive
+	if use amd64; then
+		cli_archive="${MY_PN}-${PV}-amd64.tar.gz"
+	else
+		cli_archive="${MY_PN}-${PV}-arm64.tar.gz"
+	fi
+
+	mkdir -p "${WORKDIR}"/cli || die
+	tar -xzf "${DISTDIR}/${cli_archive}" -C "${WORKDIR}"/cli || die
+
+	if use ui; then
+		mkdir -p "${WORKDIR}"/ui || die
+		tar -xzf "${DISTDIR}/${MY_PN}-ui-${PV}-amd64.tar.gz" -C "${WORKDIR}"/ui || die
+		cp "${DISTDIR}/${MY_PN}-appicon-${PV}.png" "${WORKDIR}/${MY_PN}.png" || die
+	fi
+}
+
+src_install() {
+	dobin cli/"${MY_PN}"
+
+	if use ui; then
+		dobin ui/"${MY_PN}"-ui
+
+		# Desktop entry and icon are upstream's own, taken verbatim from the
+		# netbird-ui .deb: /usr/share/applications/org.wails.netbird.desktop
+		# and /usr/share/pixmaps/netbird.png. The odd org.wails.* naming is
+		# the Wails application id, which upstream never rebranded -- but the
+		# icon itself is NetBird's logo, not a Wails placeholder.
+		doicon "${WORKDIR}/${MY_PN}.png"
+		domenu "${FILESDIR}"/org.wails.netbird.desktop
+
+		# New in 0.78.0 and also taken verbatim from the .deb. Without it
+		# pkexec still elevates, but prompts with a raw command line instead
+		# of the action's own wording. Kept whole rather than trimmed to the
+		# /usr/bin action we install: pkexec matches on exec.path, so the
+		# /usr/local/bin one is simply never selected here. polkitd picks new
+		# action files up on its own, so there is nothing to trigger.
+		insinto /usr/share/polkit-1/actions
+		doins "${FILESDIR}"/io.netbird.settings.policy
+	fi
+
+	newinitd "${FILESDIR}"/netbird.initd "${MY_PN}"
+	newconfd "${FILESDIR}"/netbird.confd "${MY_PN}"
+	systemd_dounit "${FILESDIR}"/netbird.service
+
+	# Upstream only writes this drop-in from `netbird service install`, which
+	# this package tells users not to run since it ships its own unit. Without
+	# it, systemd-networkd strips NetBird's routes and policy rules. Installed
+	# under /usr/lib rather than /etc so Portage owns it and cleans it up;
+	# networkd reads drop-ins from both, with /etc winning. Inert on systems
+	# not running networkd.
+	insinto /usr/lib/systemd/networkd.conf.d
+	newins "${FILESDIR}"/99-netbird-networkd.conf 99-netbird.conf
+
+	# Tells the upstream `curl ... install.sh --update` path that this install
+	# is managed by a package manager, so it refuses to overwrite our files.
+	insinto /etc/netbird
+	doins "${FILESDIR}"/install.conf
+
+	# Daemon defaults: --config /var/lib/netbird/default.json and
+	# --log-file /var/log/netbird/client.log
+	keepdir /var/lib/netbird /var/log/netbird
+	fperms 0700 /var/lib/netbird
+
+	dodoc cli/README.md
+}
+
+pkg_postinst() {
+	if use ui; then
+		xdg_icon_cache_update
+		xdg_desktop_database_update
+	fi
+
+	# Every merge rewrites netbird.service with a fresh mtime, even when its
+	# content is unchanged, so systemd flags the unit NeedDaemonReload after
+	# each upgrade. Reloading only rereads unit files and leaves the running
+	# daemon alone. Guarded the way sys-apps/systemd guards daemon-reexec:
+	# only on the live system, never into ROOT or a chroot without systemd.
+	if [[ -z ${ROOT} && -d /run/systemd/system ]]; then
+		ebegin "Reloading systemd unit files"
+		systemctl daemon-reload
+		eend $?
+	fi
+
+	# Only the full walkthrough on a first install; upgrades just get the
+	# short note, since the daemon is already set up. The restart stays
+	# manual on purpose: it drops any session that runs over the NetBird
+	# mesh, including one to netbird's own SSH server. The reload is repeated
+	# in the note for ROOT and chroot merges, which skip the one above.
+	if [[ -n ${REPLACING_VERSIONS} ]]; then
+		elog "Restart the daemon to run the new version:"
+		elog
+		elog "  systemctl daemon-reload && systemctl restart netbird   # systemd"
+		elog "  rc-service netbird restart                             # OpenRC"
+
+		local v
+		for v in ${REPLACING_VERSIONS}; do
+			ver_test "${v}" -lt 0.83.0 || continue
+			elog
+			elog "0.83.0 gives every profile an owner, and local users can only"
+			elog "control their own. Existing profiles are handed to the account"
+			elog "that last used them on the first start, so a single-user desktop"
+			elog "needs no action. If a regular user's netbird commands are refused,"
+			elog "check and fix the owners as root:"
+			elog
+			elog "  netbird profile list --show-owner"
+			elog "  netbird profile claim default --owner <user>"
+			elog
+			elog "To share profiles between users, or to restrict the control socket"
+			elog "to one group with --allow-group, see /etc/conf.d/netbird (OpenRC)"
+			elog "or use 'systemctl edit netbird' (systemd). Do not use"
+			elog "'netbird service install --allow-group/--service-env': it writes a"
+			elog "second unit that overrides the packaged one."
+			break
+		done
+	else
+		elog "Do NOT run 'netbird service install' -- this package ships its own"
+		elog "service file, and that command would write a second, conflicting"
+		elog "unit into /etc/systemd/system which silently takes precedence."
+		elog
+		elog "1. Start the daemon at boot:"
+		elog
+		elog "     systemctl enable --now netbird       # systemd"
+		elog "     rc-update add netbird default        # OpenRC"
+		elog "     rc-service netbird start             # OpenRC, start now"
+		elog
+		elog "2. Register this peer. Interactive SSO opens a browser:"
+		elog
+		elog "     netbird up"
+		elog
+		elog "   Headless hosts use a setup key instead:"
+		elog
+		elog "     netbird up --setup-key <key>"
+		elog "     netbird up --setup-key-file /path/to/key"
+		elog
+		elog "   Self-hosted management server:"
+		elog
+		elog "     netbird up --management-url https://netbird.example.com:443"
+		elog
+		elog "3. Verify:"
+		elog
+		elog "     netbird status"
+		elog "     systemctl status netbird"
+		elog
+		elog "Extra daemon flags go in /etc/conf.d/netbird (OpenRC) or a systemd"
+		elog "drop-in via 'systemctl edit netbird'. Logs are in /var/log/netbird."
+	fi
+
+	if [[ -f ${EROOT}/etc/systemd/networkd.conf.d/99-netbird.conf ]]; then
+		elog
+		elog "A copy of 99-netbird.conf left behind by a previous"
+		elog "'netbird service install' was found in /etc/systemd/networkd.conf.d/."
+		elog "It overrides the one this package ships and is never cleaned up"
+		elog "by netbird itself, so you may remove it:"
+		elog
+		elog "  rm ${EROOT}/etc/systemd/networkd.conf.d/99-netbird.conf"
+	fi
+}
+
+pkg_prerm() {
+	# REPLACED_BY_VERSION is set only when this removal is part of an
+	# upgrade, so a routine `emerge -u` stays quiet.
+	[[ -n ${REPLACED_BY_VERSION} ]] && return
+
+	elog "Unmerging does not stop the running daemon or touch your peer"
+	elog "registration. To tear NetBird down completely:"
+	elog
+	elog "1. Stop and disable the service:"
+	elog
+	elog "     systemctl disable --now netbird      # systemd"
+	elog "     rc-update del netbird default        # OpenRC"
+	elog "     rc-service netbird stop              # OpenRC"
+	elog
+	elog "2. Optionally disconnect this peer from the mesh. This changes state"
+	elog "   on the management server, so it is deliberately not automated:"
+	elog
+	elog "     netbird down"
+	elog
+	elog "   Run it BEFORE unmerging -- the binary is gone afterwards."
+	elog
+	elog "3. Configuration and logs are left behind on purpose, so that"
+	elog "   reinstalling reconnects without running 'netbird up' again."
+	elog "   Remove them to drop the registration for good:"
+	elog
+	elog "     rm -rf ${EROOT}/var/lib/netbird ${EROOT}/var/log/netbird"
+	elog
+	elog "4. NetBird writes this file itself and never cleans it up:"
+	elog
+	elog "     rm -f ${EROOT}/etc/systemd/networkd.conf.d/99-netbird.conf"
+	elog
+	elog "     systemctl daemon-reload"
+}
+
+pkg_postrm() {
+	if use ui; then
+		xdg_icon_cache_update
+		xdg_desktop_database_update
+	fi
+}

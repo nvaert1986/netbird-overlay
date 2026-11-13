@@ -17,7 +17,8 @@ netbird-overlay/
 ├── metadata/layout.conf
 ├── profiles/{repo_name,categories}
 └── net-vpn/netbird-bin/
-    ├── netbird-bin-0.82.0.ebuild
+    ├── netbird-bin-0.82.0.ebuild      # kept as a fallback, see Upgrading
+    ├── netbird-bin-0.83.0.ebuild
     ├── metadata.xml · Manifest
     └── files/
         ├── netbird.service            # systemd unit
@@ -99,6 +100,28 @@ rc-service netbird restart                              # OpenRC
 The restart is left to you on purpose: if you are connected over the NetBird
 mesh, it drops that session.
 
+0.82.0 stays in the overlay as a fallback for 0.83.0, which changes how
+profiles are stored (see Runtime notes). The first 0.83.0 start migrates
+`/var/lib/netbird` in place, so back it up before upgrading if you may want
+to go back:
+
+```bash
+systemctl stop netbird
+cp -a /var/lib/netbird /var/lib/netbird.pre-0.83
+emerge -av =net-vpn/netbird-bin-0.83.0
+systemctl start netbird
+
+# To revert:
+systemctl stop netbird
+emerge -av1 =net-vpn/netbird-bin-0.82.0
+rm -rf /var/lib/netbird && mv /var/lib/netbird.pre-0.83 /var/lib/netbird
+systemctl start netbird
+```
+
+With both versions in the overlay, `emerge -u` picks 0.83.0. To stay on 0.82.0,
+mask the newer one: `echo '>=net-vpn/netbird-bin-0.83.0' >>
+/etc/portage/package.mask/netbird`.
+
 ## USE flags
 
 | Flag | Default | Effect |
@@ -120,9 +143,46 @@ and `CAP_NET_RAW` for its whole lifetime to manage the WireGuard interface,
 routing table, nftables and DNS, and it ships an SSH server that spawns shells
 as other users. Upstream's own generated unit does the same.
 
-Be aware that netbird `chmod`s its control socket to `0666`, so **any local
-user can control the VPN**. That is upstream behaviour, not something this
-package introduces.
+The control socket is `0666`, so any local user can connect to it. Since
+0.83.0 the daemon decides what each caller may do from its kernel-attested
+uid: every profile has an owner, and users can only see and control their
+own. Existing profiles are handed to the account that last used them on the
+first start. An unowned `default` profile goes to the first non-root user
+holding the active local session, which is read from logind (systemd or
+elogind). Without logind, or on a headless machine, root claims it:
+
+```bash
+netbird profile list --show-owner
+netbird profile claim default --owner <user>
+```
+
+Upstream configures the rest through `netbird service install`, which this
+package does not use. Set the same options on the packaged service instead:
+
+| Option | Effect |
+|---|---|
+| `--allow-group <group>` | Socket becomes `0660` for that group; other accounts cannot connect. Prefer `gid:<n>`, which needs no group lookup at boot |
+| `NB_DISABLE_PROFILE_OWNERSHIP=true` | All local users share all profiles; pair it with `--allow-group` |
+| `NB_DISABLE_DEFAULT_PROFILE_CLAIM=true` | The `default` profile stays unowned until root claims it, recommended on servers |
+
+On OpenRC, `/etc/conf.d/netbird` carries commented examples. On systemd, run
+`systemctl edit netbird` and add, for example:
+
+```ini
+[Service]
+Environment=NB_DISABLE_DEFAULT_PROFILE_CLAIM=true
+ExecStart=
+ExecStart=/usr/bin/netbird service run --allow-group gid:1001
+```
+
+`--daemon-addr tcp://…` stops working in 0.83.0, because a TCP connection
+carries no caller identity. The packaged units use the default Unix socket.
+
+The systemd unit orders after `network.target`, not `network-online.target`,
+the same as upstream's own unit. The daemon retries its management connection
+by itself. Waiting for "online" only delays the control socket, by up to two
+minutes when `systemd-networkd-wait-online` is enabled but networkd manages
+no links (the usual case when NetworkManager handles WiFi).
 
 With `USE=ui`, `x11-misc/xdg-utils` is pulled in: both binaries shell out to
 `xdg-open` (via `skratchdot/open-golang`) to launch a browser for interactive
@@ -191,3 +251,13 @@ the tarball one this package uses. Check that the `archives:` section of
 `.goreleaser.yaml` still packs the `netbird`/`netbird-static` builds, and that
 `go version -m netbird` still shows `CGO_ENABLED=0`. If the tarball ever picks
 up the `pkcs11` tag, the CLI links libc and the Runtime notes above change.
+
+Upstream adds daemon options to `netbird service install`, which this package
+replaces with its own unit and init script. Diff `client/cmd/service*.go`
+between the tags. A new flag or variable the installer passes to `service run`
+needs a counterpart in `files/netbird.confd` and the Runtime notes, as
+`--allow-group` did in 0.83.0.
+
+To keep the old version as a fallback, `cp` the ebuild instead of `git mv`.
+Both versions then install the same `files/`, so keep changes there valid for
+the older one as well.

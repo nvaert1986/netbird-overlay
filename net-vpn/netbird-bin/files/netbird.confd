@@ -5,4 +5,20 @@
 #   NETBIRD_OPTS="--management-url https://netbird.example.com:443"
 #   NETBIRD_OPTS="--config /var/lib/netbird/default.json"
 #
+# Since 0.83.0, restrict the control socket to one group (mode 0660). Accounts
+# outside it cannot connect at all; root keeps access. A numeric GID avoids a
+# group lookup while the daemon starts:
+#   NETBIRD_OPTS="--allow-group gid:1001"
+#
 NETBIRD_OPTS=""
+
+# Daemon environment. Only exported variables reach the daemon.
+#
+# Since 0.83.0, every profile has an owner and local users can only control
+# their own. Set this to let all local users share all profiles (pair it with
+# --allow-group above):
+#   export NB_DISABLE_PROFILE_OWNERSHIP=true
+#
+# Leave the default profile unowned until root claims it, rather than handing
+# it to the first user at the console (recommended on servers):
+#   export NB_DISABLE_DEFAULT_PROFILE_CLAIM=true
